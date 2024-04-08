@@ -22,6 +22,10 @@
 
 import java.io.*;
 import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 
 class Peer
@@ -46,6 +50,27 @@ class Peer
     Peer(String name2, String ip, int lPort, String filesPath, 
          String nIP, int nPort)
     {
+        try {
+            //openStreams();
+            this.ip = ip;
+            this.lPort = lPort;
+            //ftPort = 
+
+            //new Thread(new FileTransferThread()).start();
+            //ftThread = new Thread(new LookupThread()).start();
+
+            
+
+            GUI.createAndShowGUI("Peer "+nIP);
+
+            //TODO ping ip/port with join method
+
+            this.filesPath = filesPath;
+            
+            seqNumber = 1;
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
         /* to be completed */
 
     }// constructor
@@ -67,9 +92,25 @@ class Peer
      */
     int getChoice()
     {
-        /* to be completed */
-
-        return -1;
+        char choiceInput;
+        int outputNumber = -1;
+        displayMenu();
+        try {
+            choiceInput = scanner.nextLine().toLowerCase().charAt(0);
+            if(choiceInput=='s'){outputNumber = 1;}
+            if(choiceInput=='f'){outputNumber = 2;}
+            if(choiceInput=='g'){outputNumber = 3;}
+            if(choiceInput=='q'){outputNumber = 4;}
+            if(choiceInput=='1'){outputNumber = 1;}
+            if(choiceInput=='2'){outputNumber = 2;}
+            if(choiceInput=='3'){outputNumber = 3;}
+            if(choiceInput=='4'){outputNumber = 4;}
+            if (outputNumber==-1){outputNumber=getChoice();}
+        } catch (Exception e) {
+            System.out.println( "Error on input, try again" );
+            outputNumber = getChoice();
+        }
+        return outputNumber;
     }// getChoice method
         
     /* this is the implementation of the peer's main thread, which
@@ -79,8 +120,15 @@ class Peer
      */
     void run()
     {
-        /* to be completed */
-
+        int currentChoice = -1;
+        scanner = new Scanner(System.in);
+        while (currentChoice != 4) {
+            currentChoice = getChoice();
+            if (currentChoice==1) {processStatusRequest();}
+            if (currentChoice==2) {processFindRequest();}
+            if (currentChoice==3) {processGetRequest();}
+            if (currentChoice==4) {processQuitRequest();}
+        }
     }// run method
 
     /* execute the Quit command, that is, send a "leave" message to all of the
@@ -88,8 +136,15 @@ class Peer
      */
     void processQuitRequest()
     {
-        /* to be completed */
+        for (Neighbor neigh : neighbors) {
+            //TODO leave
+        }
 
+        //TODO terminate lookup thread
+
+        //TODO terminate FileTransfer thread
+
+        scanner.close();
     }// processQuitRequest method
 
     /* execute the Status command, that is, read and display the list
@@ -101,8 +156,13 @@ class Peer
      */
     void processStatusRequest()
     {
-        /* to be completed */
-
+        //TODO done/Test
+        System.out.println( "Local files:" );
+        String spacer = "    "; //TODO 4 or 5?
+        for (File file : new File(filesPath).listFiles()) {
+            System.out.println( spacer+file.getName() );
+        }
+        printNeighbors();
     }// processStatusRequest method
 
     /* execute the Find command, that is, prompt the user for the file
@@ -116,8 +176,23 @@ class Peer
      */
     void processFindRequest()
     {
-        /* to be completed */
+        //TODO ===========
+        System.out.println("Name of file to find: ");
+        String filename = scanner.nextLine();
+        //TODO ===========
 
+        try {
+            File file = new File(filename);
+            if(file.exists() && !file.isDirectory()) { 
+                //it is local
+                System.out.println( "This file exists locally in "+file.getAbsolutePath() );
+            } else {
+                //do find requests
+                //TODO
+            }
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
     }// processFindRequest method
 
     /* execute the Get command, that is, prompt the user for the file
@@ -135,7 +210,15 @@ class Peer
     void processGetRequest()
     {
         /* to be completed */
+        //get user input
 
+        //parse UI
+        String method = "get";
+        String destinationip = ""; //Should be InetAddress
+        int destinationPort = 0;
+
+        //send request with ???
+        //TODO
     }// processGetRequest method
 
     /* create a text file in the local directory of shared files whose
@@ -143,8 +226,15 @@ class Peer
      */
     void writeFile(String fileName, String contents)
     {
-        /* to be completed */
-
+        try {
+            File file = new File(filesPath, fileName);
+            List<String> contentList = Arrays.asList(contents);
+            //contentList = contents.split("\n");
+            Files.write(file.toPath(), contentList, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // TODO: handle exception
+        }
+        
     }// writeFile method
 
     /* Send to the user's terminal the list of the peer's
@@ -153,7 +243,11 @@ class Peer
      */
     void printNeighbors()
     {   
-        /* to be completed */
+        System.out.println( "Neighbors:" );
+        String spacer = "    "; //TODO 4 or 5?
+        for (Neighbor neighbor : neighbors) {
+            System.out.println( spacer+neighbor);
+        }
 
     }// printNeighbors method
 
@@ -210,7 +304,37 @@ class Peer
         */
         public void run()
         {
-            /* to be completed */
+            //TODO not done/tested
+            try {
+                socket = new DatagramSocket(lPort);
+                if (neighbors.size() == 1) {
+                    //send join message to neighbor
+                    byte[] buff = new byte[256];
+                    //TODO need to set contents of buffer
+                    InetAddress address = InetAddress.getByName(neighbors.get(0).ip);
+                    DatagramPacket packet = new DatagramPacket(
+                        buff, 
+                        buff.length,
+                        address,
+                        neighbors.get(0).port
+                        );
+                    socket.send(packet);
+                }
+
+                //start loop
+                while (true) {
+                    byte[] buff = new byte[256];
+                    DatagramPacket packet = new DatagramPacket(buff, buff.length);
+                    socket.receive(packet);
+                    process(new String(packet.getData(), 0, packet.getLength()));
+                }
+                
+            } catch (SocketException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
         }// run method
 
@@ -224,7 +348,50 @@ class Peer
         void process(String request)
         {
             /* to be completed */
+            String[] parts = request.split(" "); //TODO parse command from the front of the string
+            byte[] buff = new byte[256];
+            
+            try {
+                InetAddress destAddress = InetAddress.getByName(parts[1]);
+                int destPort = Integer.parseInt(parts[2]);
+                switch (parts[0]) {
+                    case "find": //remove??
+                        //TODO need to set contents of buffer
 
+                        break;
+                    case "join":
+                        //TODO send neighbors
+                        //TODO need to set contents of buffer
+                        destAddress = InetAddress.getByName(parts[1]);
+                        destPort = Integer.parseInt(parts[2]);
+                        break;
+                    case "leave":
+                        //TODO need to set contents of buffer
+                        destAddress = InetAddress.getByName(parts[1]);
+                        destPort = Integer.parseInt(parts[2]);
+                        break;
+                    case"lookup":
+                        processLookup(null); //TODO
+                        break;
+                    case"file":
+                        //TODO use filetransfer thread to send file contents?
+                        
+                        break;
+                
+                    default:
+                        break;
+                }
+
+                DatagramPacket packet = new DatagramPacket(
+                            buff, 
+                            buff.length,
+                            destAddress,
+                            destPort
+                            );
+                socket.send(packet);
+            } catch (Exception e) {
+
+            }
         }// process method
 
         /* This helper method processes a "lookup" request received
@@ -269,7 +436,18 @@ class Peer
         */      
         public void run()
         {
-            /* to be completed */
+            try {
+                serverSocket = new ServerSocket(ftPort);
+                while (true) {
+                    clientSocket=serverSocket.accept();
+                    openStreams();
+                    process(in.readUTF()); //get the request from the client and processes
+                    close();
+                }
+                //TODO serverSocket is never closed
+            } catch (Exception e) {
+                // TODO: handle exception
+            }
 
         }// run method
         
@@ -283,7 +461,20 @@ class Peer
          */
         void process(String request)
         {           
-            /* to be completed */
+            //TODO might have a "\n"
+            String fileName = request.substring(request.indexOf("get ")+4);
+            
+            try {
+                File toBeSent = new File(filesPath, fileName);  //Might throw error which should trigger the else?
+                if (toBeSent.exists()) {
+                    //file is on local dir, so get contents and send
+                    out.write(readFile(toBeSent));
+                } else {
+                    //send fileNotFound
+                }
+            }catch (Exception e) {
+                // TODO: handle exception
+            }
 
         }// process method
 
@@ -292,8 +483,13 @@ class Peer
         */
         byte[] readFile(File file)
         {
-            /* to be completed */
-
+           try {
+                return Files.readAllBytes(file.toPath());
+            } catch (IOException e) {
+                System.out.println(
+                        "There was an error reading the file: " +
+                                file.getName() + "\n" + e.getMessage()
+            );}
             return null;
         }// readFile method
 
@@ -302,15 +498,32 @@ class Peer
         */
         void openStreams() throws IOException
         {
-            /* to be completed */
-
+            //TODO fix/test
+            in = (DataInputStream) clientSocket.getInputStream();
+            out = (DataOutputStream) clientSocket.getOutputStream();
         }// openStreams method
 
         /* close all open I/O streams and the client socket
          */
         void close()
         {
-            /* to be completed */
+            //TODO not done/tested
+            try {
+                // if (serverSocket != null) {
+                //     serverSocket.close();    //Not needed since we want the server socket open
+                // }
+                if (clientSocket != null) {
+                    clientSocket.close();
+                }
+                if (in != null) {
+                    in.close();
+                }
+                if (out != null) {
+                    out.close();
+                }
+            } catch (Exception e) {
+                System.err.println("Error in close(): "+e.getMessage());
+            }
 
         }// close method
         
