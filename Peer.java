@@ -46,9 +46,25 @@ class Peer
     Peer(String name2, String ip, int lPort, String filesPath, 
          String nIP, int nPort)
     {
-        /* to be completed */
+        this.name = name2;
+        this.ip = ip;
+        this.lPort = lPort;
+        this.filesPath = filesPath;
+        this.neighbors = new ArrayList<>();
+        this.seqNumber = 1;
+        this.scanner = new Scanner(System.in);
+        this.findRequests = new HashSet<>();
 
-    }// constructor
+        try {
+            this.lThread = new LookupThread();
+            this.lThread.start();
+            this.ftThread = new FileTransferThread();
+            this.ftThread.start();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }//constructor
 
     /* display the commands available to the user
        Do NOT modify this method.
@@ -67,11 +83,27 @@ class Peer
      */
     int getChoice()
     {
-        /* to be completed */
-
-        return -1;
+        displayMenu();
+        String input = scanner.nextLine();
+        switch (input.toLowerCase()) {
+            case "1":
+            case "s":
+                return 1;
+            case "2":
+            case "f":
+                return 2;
+            case "3":
+            case "g":
+                return 3;
+            case "4":
+            case "q":
+                return 4;
+            default:
+                System.out.println("Invalid choice. Please try again.");
+                return -1;
+        }
     }// getChoice method
-        
+
     /* this is the implementation of the peer's main thread, which
        continuously displays the available commands, inputs the user's
        choice, and executes the selected command, until the latter
@@ -79,17 +111,38 @@ class Peer
      */
     void run()
     {
-        /* to be completed */
+        while (true) {
+            int choice = getChoice();
+            switch (choice) {
+                case 1:
+                    processStatusRequest();
+                    break;
+                case 2:
+                    processFindRequest();
+                    break;
+                case 3:
+                    processGetRequest();
+                    break;
+                case 4:
+                    processQuitRequest();
+                    return;
+                default:
+                    break;
+            }
+        }
 
-    }// run method
+    } //run method
 
     /* execute the Quit command, that is, send a "leave" message to all of the
        peer's neighbors, then terminate the lookup thread
      */
     void processQuitRequest()
     {
-        /* to be completed */
-
+        for (Neighbor neighbor : neighbors) {
+            System.out.println("Sending leave message to neighbor: " + neighbor.ip);
+            }
+        lThread.terminate();
+      ftThread.close();
     }// processQuitRequest method
 
     /* execute the Status command, that is, read and display the list
@@ -101,7 +154,19 @@ class Peer
      */
     void processStatusRequest()
     {
-        /* to be completed */
+                       System.out.println("Files in local directory:");
+                       File directory = new File(filesPath);
+                       File[] fileList = directory.listFiles();
+                       if (fileList != null) {
+                           for (File file : fileList) {
+                               if (file.isFile()) {
+                                   System.out.println("    " + file.getName());
+                               }
+                           }
+                       } else {
+                           System.out.println("    No files found.");
+                       }
+                       printNeighbors();
 
     }// processStatusRequest method
 
@@ -116,7 +181,40 @@ class Peer
      */
     void processFindRequest()
     {
-        /* to be completed */
+
+    System.out.print("Enter filename to find: ");
+    String filename = scanner.nextLine().trim();
+
+    // Check if file is in the local directory
+    File directory = new File(filesPath);
+    File[] fileList = directory.listFiles();
+    boolean foundLocally = false;
+    if (fileList != null) {
+        for (File file : fileList) {
+            if (file.isFile() && file.getName().equals(filename)) {
+                foundLocally = true;
+                break;
+            }
+        }
+    }                                                                           
+
+    if (foundLocally) {
+        // File found locally, inform user
+        System.out.println("File '" + filename + "' found locally.");
+    } else {
+        // File not found locally, send lookup message to neighbors
+        System.out.println("File '" + filename + "' not found locally. Sending lookup message to neighbors.");
+
+        // Generate Find-request ID
+        int findRequestID = seqNumber++;
+
+        // Send lookup message to all neighbors
+        for (Neighbor neighbor : neighbors) {
+            String lookupMessage = "lookup " + findRequestID + " " + filename;
+            // Send lookup message to neighbor (implementation depends on communication method)
+            System.out.println("Sending lookup message to neighbor " + neighbor.ip + ":" + neighbor.port);
+        }
+    }
 
     }// processFindRequest method
 
@@ -143,7 +241,7 @@ class Peer
      */
     void writeFile(String fileName, String contents)
     {
-        /* to be completed */
+
 
     }// writeFile method
 
@@ -153,7 +251,10 @@ class Peer
      */
     void printNeighbors()
     {   
-        /* to be completed */
+      System.out.println("Neighbor Peers:");
+      for (Neighbor neighbor : neighbors) {
+          System.out.println("    " + neighbor.ip + ":" + neighbor.port);
+      }
 
     }// printNeighbors method
 
@@ -200,17 +301,37 @@ class Peer
             socket.close();
         }// terminate method
 
-        /* This is the implementation of the thread that listens on
+        /*This is the implementation of the thread that listens on
            the UDP lookup socket. First (at startup), if the peer has
            exactly one neighbor, send a "join" message to this
            neighbor. Otherwise, skip this step. Second, continuously
            wait for an incoming datagram (i.e., a request), display
            its contents in the GUI's Lookup panel, and process the
-           request using the helper method below.
-        */
+           request using the helper method below.*/
         public void run()
         {
-            /* to be completed */
+            try {
+              socket = new DatagramSocket(lPort);
+                if (neighbors.size() == 1) {
+                    Neighbor neighbor = neighbors.get(0);
+                    String joinMessage = "join";
+                    byte[] sendData = joinMessage.getBytes();
+                    DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(neighbor.ip), neighbor.port);
+                    socket.send(sendPacket);
+                }
+              
+                // Second, continuously wait for incoming datagrams
+                while (!stop) {
+                    byte[] receiveData = new byte[500];
+                    DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
+                    socket.receive(receivePacket);
+                    String receivedMessage = new String(receivePacket.getData(), 0, receivePacket.getLength());
+                    System.out.println("Received: " + receivedMessage);
+                    process(receivedMessage);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
 
         }// run method
 
@@ -223,7 +344,25 @@ class Peer
          */
         void process(String request)
         {
-            /* to be completed */
+            StringTokenizer tokenizer = new StringTokenizer(request);
+            String keyword = tokenizer.nextToken();
+            switch (keyword) {
+                case "join":
+                    // Process join request
+                    break;
+                case "leave":
+                    // Process leave request
+                    break;
+                case "lookup":
+                    processLookup(tokenizer);
+                    break;
+                case "file":
+                    // Process file request
+                    break;
+                default:
+                    System.out.println("Invalid request received.");
+                    break;
+            }
 
         }// process method
 
@@ -246,12 +385,61 @@ class Peer
          */
         void processLookup(StringTokenizer line)
         {
-            /* to be completed */
+                    int requestID = Integer.parseInt(line.nextToken());
+            String fileName = line.nextToken();
+            String fromIP = line.nextToken();
+            int fromPort = Integer.parseInt(line.nextToken());
 
+            // Check if the request ID has been seen before
+            if (findRequests.contains(String.valueOf(requestID))) {
+                // If the request ID has been seen before, ignore the request
+                return;
+            } else {
+                // Add the request ID to the set of seen requests
+                findRequests.add(String.valueOf(requestID));
+            }
+
+            // Check if the requested file is stored locally
+            File directory = new File(filesPath);
+            File[] files = directory.listFiles();
+            boolean fileFound = false;
+            for (File file : files) {
+                if (file.isFile() && file.getName().equals(fileName)) {
+                    // If the file is found locally, send a "file" message to the source peer
+                    String fileMessage = "file " + file.getName();
+                    byte[] sendData = fileMessage.getBytes();
+                    try (DatagramSocket sendSocket = new DatagramSocket()) {
+                        InetAddress address = InetAddress.getByName(fromIP);
+                        DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, address, fromPort);
+                        sendSocket.send(sendPacket);
+                        fileFound = true;
+                        break;
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            if (!fileFound) {
+                // If the file is not found locally, send a "lookup" message to all neighbors
+                for (Neighbor neighbor : neighbors) {
+                    if (!(neighbor.ip.equals(fromIP) && neighbor.port == fromPort)) {
+                        String lookupMessage = "lookup " + requestID + " " + fileName + " " + fromIP + " " + fromPort;
+                        byte[] sendData = lookupMessage.getBytes();
+                        try (DatagramSocket sendSocket = new DatagramSocket()) {
+                            InetAddress address = InetAddress.getByName(neighbor.ip);
+                            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, address, neighbor.port);
+                            sendSocket.send(sendPacket);
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
         }// processLookup method
 
     }// LookupThread class
-    
+
     class FileTransferThread extends Thread
     {
         ServerSocket serverSocket = null;   // TCP listening socket
@@ -269,10 +457,22 @@ class Peer
         */      
         public void run()
         {
-            /* to be completed */
+          try {
+              serverSocket = new ServerSocket(ftPort);
+              while (true) {
+                  clientSocket = serverSocket.accept();
+                  openStreams();
+                  request = in.readUTF();
+                  process(request);
+                  close();
+              }
+          } catch (IOException e) {
+              e.printStackTrace();
+          }
+          /* to be completed */
 
         }// run method
-        
+
         /* Process the given request received by the TCP client
            socket.  This request must be a "get" message (the only
            command that uses the TCP sockets). If the requested
@@ -283,7 +483,22 @@ class Peer
          */
         void process(String request)
         {           
-            /* to be completed */
+            String[] parts = request.split(" ");
+            String fileName = parts[1];
+            File file = new File(filesPath + File.separator + fileName);
+            try {
+                if (file.exists()) {
+                    byte[] fileContent = readFile(file);
+                    out.writeUTF("fileFound");
+                    out.writeInt(fileContent.length);
+                    out.write(fileContent);
+                } else {
+                    out.writeUTF("fileNotFound");
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
 
         }// process method
 
@@ -292,9 +507,15 @@ class Peer
         */
         byte[] readFile(File file)
         {
-            /* to be completed */
+            byte[] content = new byte[(int) file.length()];
+             try (FileInputStream fis = new FileInputStream(file)) {
+                 fis.read(content);
+             } catch (IOException e) {
+                 e.printStackTrace();
+             }
+             return content;
 
-            return null;
+            //return null;
         }// readFile method
 
         /* Open the necessary I/O streams and initialize the in and out
@@ -302,7 +523,8 @@ class Peer
         */
         void openStreams() throws IOException
         {
-            /* to be completed */
+            in = new DataInputStream(clientSocket.getInputStream());
+            out = new DataOutputStream(clientSocket.getOutputStream());
 
         }// openStreams method
 
@@ -310,10 +532,20 @@ class Peer
          */
         void close()
         {
-            /* to be completed */
 
+          String leaveMessage= "leave " + ip
+          out.writeUTF(leaveMessage);
+           try {
+            if (in != null)           { in.close();           } 
+            if (out != null)          { out.close();          } 
+            if (clientSocket != null) { clientSocket.close(); }  
+           } catch (IOException e) {
+               e.printStackTrace();
+
+             
+           }
         }// close method
-        
+
     }// FileTransferThread class
 
 }// Peer class
